@@ -80,13 +80,29 @@ td,th{padding:7px 8px;border-top:1px solid var(--line);text-align:left;font-size
 th{font-size:12px;color:var(--mute);font-weight:500;border-top:0}
 td.r,th.r{text-align:right}
 td .small{display:block}
-dialog{border:0;border-radius:16px;padding:0;width:min(460px,94vw);background:var(--card);color:var(--ink)}
+dialog{border:0;border-radius:16px;padding:0;width:min(480px,94vw);max-height:90vh;overflow-y:auto;overscroll-behavior:contain;background:var(--card);color:var(--ink)}
+@media (max-width:600px){dialog{width:100%;max-width:100%;margin:auto 0 0;border-radius:18px 18px 0 0;max-height:92vh;padding-bottom:env(safe-area-inset-bottom)}}
+html,body{-webkit-text-size-adjust:100%;overflow-x:hidden}
+body:has(dialog[open]){overflow:hidden}
 dialog::backdrop{background:rgba(0,0,0,.45)}
-.dlg{padding:16px}
+.dlg{padding:16px 16px 20px}
 .dlg h2{margin:0 0 12px;font-size:18px}
 .f{margin-bottom:10px}
 .f label{display:block;font-size:12px;color:var(--mute);margin-bottom:4px}
-.f input,.f select,.f textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:var(--bg)}
+.f input,.f select,.f textarea,.newin{display:block;width:100%;min-width:0;max-width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);font-size:16px;-webkit-appearance:none;appearance:none}
+.f select,.mp select{background-image:linear-gradient(45deg,transparent 50%,var(--mute) 50%),linear-gradient(135deg,var(--mute) 50%,transparent 50%);background-position:calc(100% - 16px) 50%,calc(100% - 11px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:28px}
+.two>*,.mp>*{min-width:0}
+.mp{display:grid;grid-template-columns:1.4fr 1fr;gap:8px}
+.mp select{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background-color:var(--bg);font-size:16px;-webkit-appearance:none;appearance:none}
+.pick{display:flex;flex-wrap:wrap;gap:6px}
+.pick button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:8px 13px;font-size:14px;line-height:1.2}
+.pick button.on{background:var(--acc2);border-color:var(--acc);color:var(--acc);font-weight:650}
+.pick .sw{width:10px;height:10px;border-radius:3px;flex:none}
+.pick .addnew{border-style:dashed;color:var(--acc)}
+.pick .newin{margin-top:4px;flex-basis:100%}
+.dh{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.dh h2{margin:0}
+.xc{border:0;background:var(--bg);border-radius:50%;width:32px;height:32px;flex:none;color:var(--mute)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
 .seg label{flex:1;margin:0;text-align:center;padding:8px;font-size:14px;color:var(--ink);cursor:pointer}
@@ -417,40 +433,60 @@ function render(){
 
 /* ---------- DIALOGS ---------- */
 function cardsList(){return `<datalist id="cardsdl">${S.cards.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>`}
+/* ---- элементы формы: кнопки-выбор вместо полей ---- */
+function pick(name,opts,val,addLabel){
+  return `<div class="pick" data-pick="${name}"><input type="hidden" name="${name}" value="${esc(val)}">
+    ${opts.map(o=>`<button type="button" class="${o.v===val?'on':''}" data-v="${esc(o.v)}">${o.c?`<span class="sw" style="background:${o.c}"></span>`:''}${esc(o.l)}</button>`).join('')}
+    ${addLabel?`<button type="button" class="addnew" data-new="1">＋ ${addLabel}</button><input class="newin" name="${name}_new" placeholder="${addLabel==='Новая карта'?'Название карты, например Amex':'Название группы'}" hidden autocomplete="off">`:''}</div>`;
+}
+function monthPick(name,val,emptyLabel){
+  const y0=new Date().getFullYear(),[vy,vm]=(val||'').split('-');
+  const years=[];for(let y=y0-2;y<=y0+8;y++)years.push(y);
+  if(vy&&!years.includes(+vy))years.push(+vy);
+  return `<div class="mp"><select name="${name}_m"><option value="">${emptyLabel}</option>${MN.map((m,i)=>`<option value="${pad(i+1)}" ${vm===pad(i+1)?'selected':''}>${m}</option>`).join('')}</select>
+    <select name="${name}_y">${years.map(y=>`<option ${(vy?+vy:y0)===y?'selected':''}>${y}</option>`).join('')}</select></div>`;
+}
+const readMonth=(fd,n)=>fd.get(n+'_m')?fd.get(n+'_y')+'-'+fd.get(n+'_m'):'';
+function readPick(fd,n){const nv=String(fd.get(n+'_new')||'').trim();return nv||String(fd.get(n)||'')}
+const cardOpts=()=>[{v:'',l:'Не указана'},...S.cards.map(c=>({v:c,l:c}))];
+const groupOpts=()=>[{v:'',l:'Без группы',c:NOGROUP},...S.groups.map(g=>({v:g,l:g,c:gColor(g)}))];
+function addNewTo(card,group){
+  if(card&&!S.cards.includes(card))S.cards.push(card);
+  if(group&&!S.groups.includes(group)){if(S.groups.length<8)S.groups.push(group);else return false}
+  return true;
+}
+function openDlg(html){dlg.innerHTML=html;dlg.showModal();dlg.scrollTop=0;return $('frm')}
+
 function openItem(id,kind){
-  const i=id?S.items.find(x=>x.id===id):{kind:kind||'expense',name:'',amount:'',day:'',method:'',card:'',start:todayYM(),end:'',note:''};
+  const i=id?S.items.find(x=>x.id===id):{kind:kind||'expense',name:'',amount:'',day:'',method:'',card:'',group:'',start:todayYM(),end:'',note:''};
   if(!i)return;
-  dlg.innerHTML=`<form class="dlg" id="frm"><h2>${id?'Изменить':'Новый регулярный платёж'}</h2>
-    <div class="f"><div class="seg">
-      <label><input type="radio" name="kind" value="expense" ${i.kind!=='income'?'checked':''}><span>Расход</span></label>
-      <label><input type="radio" name="kind" value="income" ${i.kind==='income'?'checked':''}><span>Доход</span></label></div></div>
-    <div class="f"><label>Название</label><input name="name" value="${esc(i.name)}" required placeholder="Например: Аренда"></div>
-    <div class="two"><div class="f"><label>Сумма в месяц, $</label><input name="amount" inputmode="decimal" value="${i.amount===''?'':String(i.amount).replace('.',',')}" required></div>
-    <div class="f"><label>Число месяца</label><input name="day" type="number" min="1" max="31" value="${i.day??''}" placeholder="—"></div></div>
-    <div class="two"><div class="f"><label>Карта / счёт</label><input name="card" list="cardsdl" value="${esc(i.card)}" placeholder="—">${cardsList()}</div>
-    <div class="f"><label>Оплата</label><select name="method"><option value="">—</option><option value="auto" ${i.method==='auto'?'selected':''}>Автоплатёж</option><option value="manual" ${i.method==='manual'?'selected':''}>Вручную</option></select></div></div>
-    <div class="f"><label>Группа (для диаграммы)</label><select name="group"><option value="">— без группы —</option>${S.groups.map(g=>`<option ${i.group===g?'selected':''}>${esc(g)}</option>`).join('')}</select></div>
-    <div class="two"><div class="f"><label>Начало (месяц)</label><input name="start" type="month" value="${i.start||''}"></div>
-    <div class="f"><label>Последний месяц</label><input name="end" type="month" value="${i.end||''}"></div></div>
-    <div class="f"><label>Заметка</label><input name="note" value="${esc(i.note)}" placeholder="Необязательно"></div>
+  const f=openDlg(`<form class="dlg" id="frm"><div class="dh"><h2>${id?'Изменить платёж':'Новый регулярный платёж'}</h2><button type="button" class="xc" data-d="close" aria-label="Закрыть">✕</button></div>
+    <div class="f">${pick('kind',[{v:'expense',l:'Расход'},{v:'income',l:'Доход'}],i.kind==='income'?'income':'expense')}</div>
+    <div class="f"><label>Название</label><input name="name" value="${esc(i.name)}" placeholder="Например: Аренда" autocomplete="off"></div>
+    <div class="two"><div class="f"><label>Сумма в месяц, $</label><input name="amount" inputmode="decimal" value="${i.amount===''?'':String(i.amount).replace('.',',')}" placeholder="0,00" autocomplete="off"></div>
+    <div class="f"><label>Число месяца</label><select name="day"><option value="">—</option>${Array.from({length:31},(_,k)=>`<option ${+i.day===k+1?'selected':''}>${k+1}</option>`).join('')}</select></div></div>
+    <div class="f"><label>Карта / счёт</label>${pick('card',cardOpts(),i.card||'','Новая карта')}</div>
+    <div class="f"><label>Оплата</label>${pick('method',[{v:'',l:'Не указано'},{v:'auto',l:'Автоплатёж'},{v:'manual',l:'Вручную'}],i.method||'')}</div>
+    <div class="f"><label>Группа (для диаграммы)</label>${pick('group',groupOpts(),i.group||'',S.groups.length<8?'Новая группа':'')}</div>
+    <div class="f"><label>Начало</label>${monthPick('start',i.start,'с самого начала')}</div>
+    <div class="f"><label>Последний платёж</label>${monthPick('end',i.end,'бессрочно')}</div>
+    <div class="f"><label>Заметка</label><input name="note" value="${esc(i.note)}" placeholder="Необязательно" autocomplete="off"></div>
     <div class="acts">${id?'<button type="button" class="btn del" data-d="del">Удалить</button>':''}<span class="sp"></span>
-      <button type="button" class="btn sec" data-d="close">Отмена</button><button class="btn" type="submit">Сохранить</button></div></form>`;
-  dlg.showModal();
-  const f=$('frm');
+      <button type="button" class="btn sec" data-d="close">Отмена</button><button class="btn" type="submit">Сохранить</button></div></form>`);
   f.onsubmit=e=>{e.preventDefault();
-    const fd=new FormData(f),amount=num(fd.get('amount'));
-    if(!String(fd.get('name')).trim()||isNaN(amount)){toast('Укажите название и сумму');return}
-    const d=parseInt(fd.get('day'),10),card=String(fd.get('card')).trim();
-    const o={kind:fd.get('kind'),name:String(fd.get('name')).trim(),amount:r2(amount),day:d>=1&&d<=31?d:null,method:fd.get('method'),card,group:fd.get('group')||'',start:fd.get('start')||'',end:fd.get('end')||'',note:String(fd.get('note')).trim()};
-    if(o.start&&o.end&&o.end<o.start){toast('Последний месяц раньше начала');return}
-    if(card&&!S.cards.includes(card))S.cards.push(card);
+    const fd=new FormData(f),amount=num(fd.get('amount')),name=String(fd.get('name')).trim();
+    if(!name){toast('Введите название');return}
+    if(isNaN(amount)){toast('Введите сумму');return}
+    const card=readPick(fd,'card'),group=readPick(fd,'group');
+    const o={kind:fd.get('kind'),name,amount:r2(amount),day:+fd.get('day')||null,method:fd.get('method')||'',card,group,start:readMonth(fd,'start'),end:readMonth(fd,'end'),note:String(fd.get('note')).trim()};
+    if(o.start&&o.end&&o.end<o.start){toast('Последний платёж раньше начала');return}
+    if(!addNewTo(card,group)){toast('Уже 8 групп — выберите существующую');return}
     if(id)Object.assign(i,o);else S.items.push({id:uid(),...o});
     save();dlg.close();render();toast('Сохранено');
   };
-  f.querySelector('[data-d=close]').onclick=()=>dlg.close();
   const del=f.querySelector('[data-d=del]');
   if(del)del.onclick=()=>{
-    if(!confirm('Удалить «'+i.name+'» совсем? История оплат по нему тоже исчезнет.\n\nЕсли платёж просто закончился — лучше укажите «Последний месяц».'))return;
+    if(!confirm('Удалить «'+i.name+'» совсем? История оплат по нему тоже исчезнет.\n\nЕсли платёж просто закончился — лучше укажите «Последний платёж».'))return;
     S.items=S.items.filter(x=>x.id!==id);Object.values(S.months).forEach(m=>{delete m.paid[id];delete m.actual[id]});
     save();dlg.close();render();toast('Удалено');
   };
@@ -458,43 +494,37 @@ function openItem(id,kind){
 function openAmount(id){
   const i=S.items.find(x=>x.id===id);if(!i)return;
   const m=M(cur),v=m.actual[id]??i.amount;
-  dlg.innerHTML=`<form class="dlg" id="frm"><h2>${esc(i.name)}</h2>
-    <div class="small" style="margin-bottom:10px">Сумма только за ${ymLabel(cur).toLowerCase()}. Плановая: ${fmt(i.amount)}. Чтобы изменить на все месяцы — нажмите на название.</div>
-    <div class="f"><label>Фактическая сумма, $</label><input name="amount" inputmode="decimal" value="${String(v).replace('.',',')}" autofocus></div>
-    <div class="acts"><button type="button" class="btn sec" data-d="reset">Вернуть плановую</button><span class="sp"></span>
-    <button type="button" class="btn sec" data-d="close">Отмена</button><button class="btn" type="submit">Сохранить</button></div></form>`;
-  dlg.showModal();
-  const f=$('frm');
+  const f=openDlg(`<form class="dlg" id="frm"><div class="dh"><h2>${esc(i.name)}</h2><button type="button" class="xc" data-d="close" aria-label="Закрыть">✕</button></div>
+    <div class="small" style="margin-bottom:10px">Сумма только за ${ymLabel(cur).toLowerCase()}. Плановая: ${fmt(i.amount)}.</div>
+    <div class="f"><label>Фактическая сумма, $</label><input name="amount" inputmode="decimal" value="${String(v).replace('.',',')}" autocomplete="off"></div>
+    <div class="acts"><button type="button" class="btn sec" data-d="full">Изменить платёж целиком</button><span class="sp"></span>
+    ${m.actual[id]!==undefined&&m.actual[id]!==i.amount?'<button type="button" class="btn sec" data-d="reset">Вернуть плановую</button>':''}<button class="btn" type="submit">Сохранить</button></div></form>`);
   f.onsubmit=e=>{e.preventDefault();const a=num(new FormData(f).get('amount'));if(isNaN(a)){toast('Неверная сумма');return}
     M(cur,true).actual[id]=r2(a);save();dlg.close();render()};
-  f.querySelector('[data-d=close]').onclick=()=>dlg.close();
-  f.querySelector('[data-d=reset]').onclick=()=>{const mm=M(cur,true);delete mm.actual[id];save();dlg.close();render()};
+  f.querySelector('[data-d=full]').onclick=()=>openItem(id);
+  const rs=f.querySelector('[data-d=reset]');if(rs)rs.onclick=()=>{const mm=M(cur,true);delete mm.actual[id];save();dlg.close();render()};
 }
 function openExtra(id,kind){
-  const m=M(cur,true),e=id?m.extras.find(x=>x.id===id):{kind:kind||'expense',name:'',amount:'',day:new Date().getMonth()+1===+cur.slice(5)?new Date().getDate():null,card:'',group:'',note:''};
+  const m=M(cur,true),isCur=cur===todayYM(),e=id?m.extras.find(x=>x.id===id):{kind:kind||'expense',name:'',amount:'',day:isCur?new Date().getDate():null,card:'',group:'',note:''};
   if(!e)return;
-  dlg.innerHTML=`<form class="dlg" id="frm"><h2>${id?'Изменить':(e.kind==='income'?'Разовый доход':'Разовый расход')} · ${ymLabel(cur).toLowerCase()}</h2>
-    <div class="f"><div class="seg">
-      <label><input type="radio" name="kind" value="expense" ${e.kind!=='income'?'checked':''}><span>Расход</span></label>
-      <label><input type="radio" name="kind" value="income" ${e.kind==='income'?'checked':''}><span>Доход</span></label></div></div>
-    <div class="f"><label>Название</label><input name="name" value="${esc(e.name)}" required placeholder="Например: Ремонт машины"></div>
-    <div class="two"><div class="f"><label>Сумма, $</label><input name="amount" inputmode="decimal" value="${e.amount===''?'':String(e.amount).replace('.',',')}" required></div>
-    <div class="f"><label>Число</label><input name="day" type="number" min="1" max="31" value="${e.day??''}"></div></div>
-    <div class="two"><div class="f"><label>Карта / счёт</label><input name="card" list="cardsdl" value="${esc(e.card)}" placeholder="—">${cardsList()}</div>
-    <div class="f"><label>Группа</label><select name="group"><option value="">—</option>${S.groups.map(g=>`<option ${e.group===g?'selected':''}>${esc(g)}</option>`).join('')}</select></div></div>
-    <div class="f"><label>Заметка</label><input name="note" value="${esc(e.note)}"></div>
+  const f=openDlg(`<form class="dlg" id="frm"><div class="dh"><h2>${id?'Изменить':'Разовая запись'} · ${ymLabel(cur).toLowerCase()}</h2><button type="button" class="xc" data-d="close" aria-label="Закрыть">✕</button></div>
+    <div class="f">${pick('kind',[{v:'expense',l:'Расход'},{v:'income',l:'Доход'}],e.kind==='income'?'income':'expense')}</div>
+    <div class="f"><label>Название</label><input name="name" value="${esc(e.name)}" placeholder="Например: Ремонт машины" autocomplete="off"></div>
+    <div class="two"><div class="f"><label>Сумма, $</label><input name="amount" inputmode="decimal" value="${e.amount===''?'':String(e.amount).replace('.',',')}" placeholder="0,00" autocomplete="off"></div>
+    <div class="f"><label>Число</label><select name="day"><option value="">—</option>${Array.from({length:31},(_,k)=>`<option ${+e.day===k+1?'selected':''}>${k+1}</option>`).join('')}</select></div></div>
+    <div class="f"><label>Карта / счёт</label>${pick('card',cardOpts(),e.card||'','Новая карта')}</div>
+    <div class="f"><label>Группа</label>${pick('group',groupOpts(),e.group||'',S.groups.length<8?'Новая группа':'')}</div>
+    <div class="f"><label>Заметка</label><input name="note" value="${esc(e.note)}" placeholder="Необязательно" autocomplete="off"></div>
     <div class="acts">${id?'<button type="button" class="btn del" data-d="del">Удалить</button>':''}<span class="sp"></span>
-      <button type="button" class="btn sec" data-d="close">Отмена</button><button class="btn" type="submit">Сохранить</button></div></form>`;
-  dlg.showModal();
-  const f=$('frm');
-  f.onsubmit=ev=>{ev.preventDefault();const fd=new FormData(f),a=num(fd.get('amount'));
-    if(!String(fd.get('name')).trim()||isNaN(a)){toast('Укажите название и сумму');return}
-    const d=parseInt(fd.get('day'),10),card=String(fd.get('card')).trim();
-    const o={kind:fd.get('kind'),name:String(fd.get('name')).trim(),amount:r2(a),day:d>=1&&d<=31?d:null,card,group:fd.get('group')||'',note:String(fd.get('note')).trim()};
-    if(card&&!S.cards.includes(card))S.cards.push(card);
+      <button type="button" class="btn sec" data-d="close">Отмена</button><button class="btn" type="submit">Сохранить</button></div></form>`);
+  f.onsubmit=ev=>{ev.preventDefault();const fd=new FormData(f),a=num(fd.get('amount')),name=String(fd.get('name')).trim();
+    if(!name){toast('Введите название');return}
+    if(isNaN(a)){toast('Введите сумму');return}
+    const card=readPick(fd,'card'),group=readPick(fd,'group');
+    if(!addNewTo(card,group)){toast('Уже 8 групп — выберите существующую');return}
+    const o={kind:fd.get('kind'),name,amount:r2(a),day:+fd.get('day')||null,card,group,note:String(fd.get('note')).trim()};
     if(id)Object.assign(e,o);else{const nid=uid();m.extras.push({id:nid,...o});m.paid[nid]=true}
     save();dlg.close();render();toast('Сохранено')};
-  f.querySelector('[data-d=close]').onclick=()=>dlg.close();
   const del=f.querySelector('[data-d=del]');
   if(del)del.onclick=()=>{if(!confirm('Удалить «'+e.name+'»?'))return;m.extras=m.extras.filter(x=>x.id!==id);delete m.paid[id];save();dlg.close();render()};
 }
@@ -557,7 +587,15 @@ view.addEventListener('click',e=>{
   else if(a==='wipe'){if(confirm('Удалить ВСЕ данные без возможности восстановления? Сначала лучше сохранить копию.')){S=seed();save();render()}}
 });
 $('sync').addEventListener('click',()=>{tab='settings';render()});
-dlg.addEventListener('click',e=>{if(e.target===dlg)dlg.close()});
+dlg.addEventListener('click',e=>{
+  if(e.target===dlg){dlg.close();return}
+  if(e.target.closest('[data-d=close]')){dlg.close();return}
+  const b=e.target.closest('.pick button');if(!b)return;
+  const box=b.closest('.pick'),hid=box.querySelector('input[type=hidden]'),nw=box.querySelector('.newin');
+  box.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+  if(b.dataset.new){if(nw){nw.hidden=false;nw.focus()}hid.value=''}
+  else{hid.value=b.dataset.v;if(nw){nw.hidden=true;nw.value=''}}
+});
 render();
 Sync.init();
 })();
